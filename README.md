@@ -39,7 +39,6 @@ Run
 
 ```
 python measure_speech.py --dataset speechcommands --measurement-factor s --ambient-dim 800 --sample-rate 8000 --normalization NORMALIZE
-
 ```
 with s and NORMALIZE defined as previously.
 
@@ -98,7 +97,6 @@ to segment and measure data. It will create a folder `data/timit_{NUM_MEASUREMEN
 
 ```
 python admm_speech.py --input_folder data/timit_200_800_8000 ...
-
 ```
 
 to train the model.
@@ -110,7 +108,6 @@ Train a model with `admm_speech.py` to save a checkpoint and then run
 
 ```
 python admm_extract_test_spectrograms.py --dataset timit --input-folder data/timit_400_800_8000_sqrt_m/ --measurement-factor 0.5 --sample-rate 8000 --ambient-dim 800 --ckpt chechpoint_name.pt  --output-folder my_output_folder
-
 ```
 
 # Create robustness plot
@@ -119,7 +116,6 @@ For 40% CS ratio (respectively for 25%), run
 
 ```
 python evaluate_robustness.py --dataset timit --ista-input-folder data/timit_320_800_8000_ISTA/ --admm-input-folder data/timit_320_800_8000_sqrt_m/ --ista-ckpt ${HOME}/checkpoints/timit_dista/deepISTA-timit-L10-0.001-320.pt --admm-ckpt ${HOME}/checkpoints/timit_admm/admm-timit-l10-mfactor0.4-lr1e-05-rho1.0.pt --output-folder timit_robustness_specs_320_10-10L --measurement-factor 0.4 --sample-rate 8000 --ambient-dim 800 --admm-layers 10 --ista-layers 10
-
 ```
 where `deepISTA` is the script implementing ISTA-net.
 
