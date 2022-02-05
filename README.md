@@ -22,7 +22,6 @@ Run
 
 ```
 python admm_mnist.py --measurement-factor s --lamda 1e-4 --rho 1 --layers 5 --redundancy 5 --normalization NORMALIZE --learning-rate 1e-4
-
 ```
 
 to train the model with MNIST (similarly with CIFAR10). `s` is a CS ratio in {0.25, 0.40, 0.50} and `NORMALIZE` stands for the type of desired normalization to be applied on the measurement matrix A (None for A, sqrt_m for A/sqrt(num_measurements), orth for AA^T=I). For the corresponding paper, the chosen normalization is sqrt_m.
@@ -89,7 +88,6 @@ Run
 
 ```
 python measure_speech.py --dataset timit --ambient-dim ...
-
 ```
 
 to segment and measure data. It will create a folder `data/timit_{NUM_MEASUREMENTS}_{AMBIENT_DIM}_{SAMPLE_RATE}`.
