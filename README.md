@@ -1,6 +1,6 @@
 # ADMM-DAD net
 
-Code for the experiments of the paper "ADMM-DAD net: a deep unfolding network for analysis compressed sensing", V. Kouni, G. Paraskevopoulos, H. Rauhut, G. C. Alexandropoulos, arXiv preprint, arXiv: 2110.06986. 
+Code for the experiments of the paper "ADMM-DAD net: a deep unfolding network for analysis compressed sensing", V. Kouni, G. Paraskevopoulos, H. Rauhut, G. C. Alexandropoulos, arXiv preprint, arXiv: 2110.06986, to appear in 2022 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP).
 
 The repository contains three main scripts for ADMM-DAD: `admm_mnist.py`, `admm_cifar.py`, `admm_speech.py`.
 
@@ -25,7 +25,7 @@ python admm_mnist.py --measurement-factor s --lamda 1e-4 --rho 1 --layers 5 --re
 
 ```
 
-to train the model with MNIST (similarly with CIFAR10). `s` is a CS ratio in {0.25, 0.40, 0.50} and `NORMALIZE` stands for the type of desired normalization to be applied on the measurement matrix A (None for A, sqrt_m for A/sqrt(num_measurements), orth for AA^T=I).
+to train the model with MNIST (similarly with CIFAR10). `s` is a CS ratio in {0.25, 0.40, 0.50} and `NORMALIZE` stands for the type of desired normalization to be applied on the measurement matrix A (None for A, sqrt_m for A/sqrt(num_measurements), orth for AA^T=I). For the corresponding paper, the chosen normalization is sqrt_m.
 
 
 # How to run SpeechCommands
@@ -38,7 +38,7 @@ Set `DOWNLOAD_DATA=True` in `measure_speech.py` or create a folder `data` in you
 Run 
 
 ```
-python measure_speech.py --dataset speechcommands --measurement-factor s --ambient-dim 800 --sample-rate 8000 --normalization NORMALIZE,
+python measure_speech.py --dataset speechcommands --measurement-factor s --ambient-dim 800 --sample-rate 8000 --normalization NORMALIZE
 
 ```
 with s and NORMALIZE defined as previously.
