@@ -457,7 +457,7 @@ def evaluate(stds, algorithm="admm", device="cpu"):
 if __name__ == "__main__":
     #device = "cuda" if torch.cuda.is_available() else "cpu"
     device = "cpu"
-    stds = [0.0, 1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3, 1e-2, 5e-2, 1e-1]
+    stds = [0.0, 1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3, 1e-2]
     admm_mses = evaluate(stds, algorithm="admm", device=device)
     ista_mses = evaluate(stds, algorithm="ista", device=device)
     print(stds)
