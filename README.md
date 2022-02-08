@@ -110,6 +110,13 @@ python admm_extract_test_spectrograms.py --dataset timit --input-folder data/tim
 
 # Create robustness plot
 
+First, run the `measure_clean.py`script as
+
+```
+python measure_clean.py --dataset timit --input-folder data/timit_200_800_8000_NORMALIZE
+```
+where NORMALIZE is the sqrt_m factor (see "How to run MNIST/CIFAR10 section of README).
+
 For 40% CS ratio (respectively for 25%), run
 
 ```
