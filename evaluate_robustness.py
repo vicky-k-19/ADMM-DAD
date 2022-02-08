@@ -1,28 +1,36 @@
-import argparse
-import math
-import os
 import pickle
-import random
-from datetime import datetime
-from re import sub
-
 import matplotlib.pyplot as plt
-import numpy as np
+from re import sub
+import torchaudio
+from datasets import (
+    MYSPEECHCOMMANDS,
+    Device,
+    SequenceCollator,
+    Timit,
+    MeasurementsDataset,
+    split_into_windows,
+)
+import os
+import random
+import math
+from datetime import datetime
 import torch
 import torch.nn.functional as F
-# For plotting headlessly
-from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from torch import nn
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+import numpy as np
+import argparse
+from matplotlib.ticker import FormatStrFormatter
 
 # import wandb
 import librosa
 import librosa.display
-import torchaudio
-from datasets import (MYSPEECHCOMMANDS, Device, MeasurementsDataset,
-                      SequenceCollator, Timit, split_into_windows)
+
+# For plotting headlessly
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+
 from utils import Unfolded_ST
 
 TEST_SAMPLE_INDICES_TO_SAVE = [10, 51, 201, 103, 1]
@@ -114,7 +122,6 @@ def parse_args():
         default=5,
         help="Redundancy factor",
     )
-
     return parser.parse_args()
 
 
@@ -134,7 +141,6 @@ else:
 #######################################################################################
 # Data Loading & Utility functions                                                    #
 #######################################################################################
-
 def get_data_loaders(batch_size, data_path):
     if ARGS.dataset == "speechcommands":
         evaluation = MYSPEECHCOMMANDS(
@@ -169,7 +175,6 @@ def get_data_loaders(batch_size, data_path):
 
 def safe_mkdirs(path: str) -> None:
     """! Makes recursively all the directory in input path """
-
     if not os.path.exists(path):
         try:
             os.makedirs(path)
@@ -191,44 +196,66 @@ class ShrinkageActivation(nn.Module):
         return torch.sign(x) * torch.max(torch.zeros_like(x), torch.abs(x) - lamda)
 
 
-class DAD(nn.Module):
+class UCS(nn.Module):
     def __init__(
         self,
-        measurements=200,
-        ambient=800,
+        measurements=400,
+        ambient=28 * 28,
         redundancy_multiplier=3,
-        admm_iterations=10,
+        sparsity_percentage=0.2,
+        admm_iterations=1,
         lamda=0.1,
         rho=1,
+        remeasure_y=False,
+        sparsity_method="attention",
         measurement_matrix=None,
     ):
-        super(DAD, self).__init__()
+        super(UCS, self).__init__()
         print("Model Hyperparameters:")
         print(f"\tmeasurements={measurements}")
         print(f"\tredundancy_multiplier={redundancy_multiplier}")
+        print(
+            f'\tsparsity_percentage={sparsity_percentage}. Not applicable when sparsity_method="relu_mean"'
+        )
         print(f"\tadmm_iterations={admm_iterations}")
         print(f"\tlambda={lamda}")
         print(f"\trho={rho}")
+        print(f"\tsparsity_method={sparsity_method}")
+        remeasure_y = False  # Force false here, since it's bad formulation if True
         self.lamda = lamda
+        self.remeasure_y = remeasure_y
         self.redundancy_multiplier = redundancy_multiplier
+        self.sparsity_percentage = sparsity_percentage
         self.admm_iterations = admm_iterations
         self.measurements = measurements
         self.ambient = ambient
         self.activation = ShrinkageActivation()
-
         if measurement_matrix is None:
-            a = torch.randn(measurements, ambient)/np.sqrt(self.measurements)
+            a = torch.randn(measurements, ambient)
         else:
             a = measurement_matrix
         self.register_buffer("a", a)
+        # id = torch.eye(self.ambient,self.ambient)
+        # idx = torch.randperm(self.measurements)
+        # a = id[idx[:self.measurements],:]
         self.rho = rho
         phi = nn.Parameter(self._init_phi())
         self.register_parameter("phi", phi)
+        self.sparsity_method = sparsity_method
+        if sparsity_method == "attention":
+            self.sparsifier = self.sparsify_fx_attention
+        elif sparsity_method == "relu_adaptive":
+            self.sparsifier = self.sparsify_fx_relu_adaptive
+        elif sparsity_method == "relu_mean":
+            self.sparsifier = self.sparsify_fx_relu_mean
+        elif sparsity_method == "none":
+            self.sparsifier = self.dont_sparsify
+        else:
+            raise ValueError("Unsupported sparsity method")
 
     def _init_phi(self):
-        # initialization of the analysis operator
-        
         init = torch.empty(self.ambient * self.redundancy_multiplier, self.ambient)
+
         init = torch.nn.init.kaiming_normal_(init)
 
         return init
@@ -237,21 +264,19 @@ class DAD(nn.Module):
         return "(phi): Parameter({}, {})".format(*self.phi.shape)
 
     def measure_x(self, x):
-        # Create measurements y_i=Ax_i+noise for each segment x_i of x
+        # Create y
 
-        y = torch.einsum("ma,ba->bm", self.a, x)
-        n = 1e-4*torch.randn_like(y)
-        y = y+n
+        y = torch.einsum("ma,ba->bm", self.a, x)  # (400, 784) * (B,784) -> (B, 400)
+        e = torch.randn_like(y)
+        y = y + 1e-4 * e
 
         return y
 
-    def multiplier(self,rho):
-        # m = (A^T*A+Φ^Τ*Φ)^-1
-        # Instead of calculating directly the inverse, we take the LU factorization of A^T*A+Φ^Τ*Φ
-
-        ata = torch.mm(self.a.t(), self.a)
-        ftf = torch.mm(self.phi.t(),self.phi)
-        m = ata + rho * ftf
+    def multiplier(self):
+        ata = torch.mm(self.a.t(), self.a)  # (784, 400) * (400, 784) -> (784, 784)
+        ftf = torch.mm(self.phi.t(), self.phi)
+        # m = torch.inverse(ata)
+        m = ata + self.rho * ftf
         m_lu, _ = m.lu()
         _, L, U = torch.lu_unpack(m_lu, _)
         Linv = torch.linalg.inv(L)
@@ -259,40 +284,71 @@ class DAD(nn.Module):
 
         return Linv, Uinv
 
-    def linear(self, x, u):
-        # application of analysis operator Φ
+    def sparsify_fx_relu_adaptive(self, fx, x):
+        threshold = torch.quantile(
+            fx, 1 - self.sparsity_percentage, dim=-1, keepdim=True
+        )  # keeps exactly sparsity_percentage * fx.numel() non zero entries
+        fx_sparse = torch.relu(fx - (threshold - 1e-10))  # IT'S MAGIC
+        return fx_sparse
 
+    def sparsify_fx_relu_mean(self, fx, x):
+        threshold = torch.abs(torch.mean(fx))
+        fx_sparse = torch.relu(fx - (threshold - 1e-10))  # IT'S MAGIC
+        return fx_sparse
+
+    def dont_sparsify(self, fx, x):
+        return fx
+
+    def sparsify_fx_attention(self, fx, x):
+        scores = torch.einsum("ba,sa->bs", x, self.phi) / math.sqrt(
+            x.size(-1)
+        )  # (B, 3*784)
+        scores = F.softmax(scores, dim=-1)
+        scores = scores.mean(0)  # (3 * 784)
+        scores = F.dropout(scores, p=0.1)
+        top_scores, indices = torch.topk(
+            scores, int(self.sparsity_percentage * scores.size(-1)), dim=-1
+        )
+        mask = torch.zeros_like(fx)
+        mask[:, indices] = 1
+        fx_sparse = fx * mask
+        return fx_sparse
+
+    def linear(self, x, u):
         fx = torch.einsum("sa,ba->bs", self.phi, x)
-        return fx + u 
+        fx = self.sparsifier(fx, x)
+        return fx + u  # (B, 3*784)
 
     def decode(self, y, min_x, max_x, u, z):
-        rho = self.rho
-        lamda = self.lamda
-        Linv, Uinv = self.multiplier(rho)
+        # t1 = 1
+        Linv, Uinv = self.multiplier()  # (784,784)
         x0 = torch.einsum("am,bm->ba", self.a.t(), y)
-            
         for _ in range(self.admm_iterations):
-            x_L = torch.einsum("aa,ba->ba",Linv, x0 + torch.einsum("as,bs->ba",rho*self.phi.t(),z-u))
-            x_hat = torch.einsum("aa,ba->ba",Uinv,x_L)
+            # AF = torch.mm(Uinv,Linv)
+            x_L = torch.einsum(
+                "aa,ba->ba",
+                Linv,
+                x0 + torch.einsum("as,bs->ba", self.rho * self.phi.t(), z - u),
+            )
+            x_hat = torch.einsum("aa,ba->ba", Uinv, x_L)
             fxu = self.linear(x_hat, u)
-            z = self.activation(fxu,lamda/rho)
+            z = self.activation(fxu, self.lamda / self.rho)
             u = u + fxu - z
 
-        # truncate the reconstructed x_hat, so that it lies in the same values' interval as the original x
-        return torch.clamp(x_hat,min=min_x,max=max_x)      
+        return torch.clamp(x_hat, min=min_x, max=max_x)
+        # return x_hat
 
     def forward(self, y, x):
         x = x.view(x.size(0), -1)
         y = y.view(y.size(0), -1)
         min_x = torch.min(x)
         max_x = torch.max(x)
-        # create the dual variables z, u
         u = torch.zeros((x.size(0), self.phi.size(0))).to(y.device)
         z = torch.zeros((x.size(0), self.phi.size(0))).to(y.device)
-        # pass y through the network-decoder to get the output x_hat
         x_hat = self.decode(y, min_x, max_x, u, z)
 
-        return x_hat 
+        return x_hat  # (B,784)
+
 
 def save_spectrogram(wav_path):
     spec_fn = torchaudio.transforms.Spectrogram(n_fft=1024)
@@ -316,7 +372,6 @@ def save_spectrogram(wav_path):
 
 def insert_noise(y, std=0.0):
     n = torch.randn_like(y) * std
-
     return y + n
 
 
@@ -327,7 +382,6 @@ def measure_x(model, x, algorithm="admm", std=0.0, device="cpu"):
         y = model.measure_x(x)
 
     y = insert_noise(y, std=std)
-
     return y
 
 
@@ -350,7 +404,6 @@ def save_examples(model, eval_loader, algorithm="admm", std=0.0, device="cpu"):
         torch.stack(
             split_into_windows(w, num_windows=int(MAX_LENGTH / AMBIENT_DIM))
         ).to(device)
-
         for w in wavs
     ]
 
@@ -358,11 +411,9 @@ def save_examples(model, eval_loader, algorithm="admm", std=0.0, device="cpu"):
     measurements = [measure_x(model, s, algorithm=algorithm, std=std, device=device) for s in segments]
     reconstructed = [
         reconstruct(model, m, s, algorithm=algorithm, device=device)
-
         for m, s in zip(measurements, segments)
     ]
     reconstructed = [r.reshape(-1).detach().cpu() for r in reconstructed]
-
     for idx, (org, rec) in enumerate(zip(wavs, reconstructed)):
         org = org[org != 0.0].unsqueeze(0).detach().cpu()
         rec = rec.unsqueeze(0).detach().cpu()
@@ -403,7 +454,6 @@ def run_robustness(model, test_loader, criterion, evaluation_loader, algorithm="
     print(f"Robustness test std={std} | MSE={avg_val_mse:.20}")
 
     save_examples(model, evaluation_loader, std=std, algorithm=algorithm, device=device)
-
     return avg_val_mse
 
 #######################################################################################
@@ -412,7 +462,6 @@ def run_robustness(model, test_loader, criterion, evaluation_loader, algorithm="
 
 
 def evaluate(stds, algorithm="admm", device="cpu"):
-    """Run robustness tests. Evaluate for different levels of measurement noise."""
     input_folder = ARGS.admm_input_folder if algorithm == "admm" else ARGS.ista_input_folder
     ckpt = ARGS.admm_ckpt if algorithm == "admm" else ARGS.ista_ckpt
 
@@ -421,13 +470,15 @@ def evaluate(stds, algorithm="admm", device="cpu"):
     )
 
     if algorithm == "admm":
-        model = DAD(
+        model = UCS(
             measurements=ARGS.measurement_factor * ARGS.ambient_dim,
             ambient=AMBIENT_DIM,
             admm_iterations=ARGS.admm_layers,
             lamda=ARGS.lamda,
             rho=ARGS.rho,
             redundancy_multiplier=ARGS.redundancy,
+            sparsity_percentage=0.01,
+            sparsity_method="none",
             measurement_matrix=measurement_matrix,
         )
     else:
@@ -457,7 +508,8 @@ def evaluate(stds, algorithm="admm", device="cpu"):
 if __name__ == "__main__":
     #device = "cuda" if torch.cuda.is_available() else "cpu"
     device = "cpu"
-    stds = [0.0, 1e-5, 5e-5, 1e-4, 5e-4, 1e-3, 5e-3, 1e-2]
+    stds = np.linspace(0.0,1e-2,50) 
+    # stds = [0.0, 1e-5, 1e-2]
     admm_mses = evaluate(stds, algorithm="admm", device=device)
     ista_mses = evaluate(stds, algorithm="ista", device=device)
     print(stds)
@@ -465,9 +517,18 @@ if __name__ == "__main__":
     print(ista_mses)
     fig,ax = plt.subplots()
 
-    ax.set_ylabel('MSE')
-    ax.set_xlabel("Noise standard deviation")
-    
-    ax.plot(stds, admm_mses)
-    ax.plot(stds, ista_mses, linestyle="--")
-    fig.savefig("robustness.png")
+    #ax.xaxis([0.0,1e-2])
+
+    ax.yaxis.set_major_formatter(FormatStrFormatter('%.1e'))
+    ax.xaxis.set_major_formatter(FormatStrFormatter('%.1e'))
+
+    ax.set_ylabel('MSE',fontsize=15)
+    ax.set_xlabel("Noise's standard deviation",fontsize=15)
+    plt.yticks(np.linspace(1e-6,3e-4,8))
+
+    ax.plot(stds, admm_mses, marker = '*')
+    ax.plot(stds, ista_mses, marker = 'o')
+    plt.legend(["10-layer ADMM-DAD","10-layer ISTA-net"], loc = 'center right')
+    #ax.plot(stds, ista_mses, linestyle="--")
+    plt.show()
+    fig.savefig(f"robustness_{ARGS.measurement_factor*800}.png", bbox_inches='tight')
