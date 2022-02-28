@@ -1,6 +1,8 @@
 # ADMM-DAD net
 
-Code for the experiments of the paper "ADMM-DAD net: a deep unfolding network for analysis compressed sensing", V. Kouni, G. Paraskevopoulos, H. Rauhut, G. C. Alexandropoulos, arXiv preprint, arXiv: 2110.06986, to appear in 2022 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP).
+Code for the experiments of the paper [ADMM-DAD net: a deep unfolding network for analysis compressed sensing, V. Kouni, G. Paraskevopoulos, H. Rauhut, G. C. Alexandropoulos, arXiv preprint, arXiv: 2110.06986, to appear in 2022 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)](https://arxiv.org/abs/2110.06986).
+
+Code contributors: G. Paraskevopoulos, V. Kouni.
 
 The repository contains three main scripts for ADMM-DAD: `admm_mnist.py`, `admm_cifar.py`, `admm_speech.py`.
 
