@@ -2,8 +2,6 @@
 
 Code for the experiments of the paper [ADMM-DAD net: a deep unfolding network for analysis compressed sensing, V. Kouni, G. Paraskevopoulos, H. Rauhut, G. C. Alexandropoulos, arXiv preprint, arXiv: 2110.06986, to appear in 2022 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)](https://arxiv.org/abs/2110.06986).
 
-Code contributors: G. Paraskevopoulos, V. Kouni.
-
 The repository contains three main scripts for ADMM-DAD: `admm_mnist.py`, `admm_cifar.py`, `admm_speech.py`.
 
 The first two scripts train the model on the MNIST and CIFAR10 datasets respectively and create a folder named `results_admm_dataset` (`dataset=MNIST or CIFAR10`) containing examples of an original and reconstructed image from the corresponding dataset.
@@ -18,7 +16,7 @@ Some additional scripts in the repository are `measure_speech.py`, `measure_clea
 
 `evaluate_robustness.py` takes checkpoints of ADMM-DAD net and ISTA-net and plots the desired robustness graph.
 
-# How to run MNIST/CIFAR10
+## How to run MNIST/CIFAR10
 
 Run 
 
@@ -29,7 +27,7 @@ python admm_mnist.py --measurement-factor s --lamda 1e-4 --rho 1 --layers 5 --re
 to train the model with MNIST (similarly with CIFAR10). `s` is a CS ratio in {0.25, 0.40, 0.50} and `NORMALIZE` stands for the type of desired normalization to be applied on the measurement matrix A (None for A, sqrt_m for A/sqrt(num_measurements), orth for AA^T=I). For the corresponding paper, the chosen normalization is sqrt_m.
 
 
-# How to run SpeechCommands
+## How to run SpeechCommands
 
 ### Download dataset
 Set `DOWNLOAD_DATA=True` in `measure_speech.py` or create a folder `data` in your working directory, then extract `speech_commands_v0.02.tar.gz` into `data/SpeechCommands/speech_commands_v0.02`.
@@ -68,7 +66,7 @@ python admm_speech.py --input-folder data/speechcommands_s_800_8000_NORMALIZE --
 to train the model.
 
 
-# How to run Timit
+## How to run Timit
 
 ### Download data
 
@@ -102,7 +100,7 @@ python admm_speech.py --input_folder data/timit_200_800_8000 ...
 to train the model.
 
 
-# Extract Spectrograms
+## Extract Spectrograms
 
 Train a model with `admm_speech.py` to save a checkpoint and then run 
 
@@ -110,7 +108,7 @@ Train a model with `admm_speech.py` to save a checkpoint and then run
 python admm_extract_test_spectrograms.py --dataset timit --input-folder data/timit_400_800_8000_sqrt_m/ --measurement-factor 0.5 --sample-rate 8000 --ambient-dim 800 --ckpt chechpoint_name.pt  --output-folder my_output_folder
 ```
 
-# Create robustness plot
+## Create robustness plot
 
 First, run the `measure_clean.py`script as
 
@@ -126,4 +124,8 @@ python evaluate_robustness.py --dataset timit --ista-input-folder data/timit_320
 ```
 where `deepISTA` is the script implementing ISTA-net.
 
-The scripts implementing the baseline ISTA-net were provided to us by original authors of "Compressive Sensing and Neural Networks from a Statistical Learning Perspective", A. Behboodi, H. Rauhut, E. Schnoor, arXiv preprint, arXiv:2010.15658 (2020). For reproducibility purposes, the interested reader may contact them. 
+The scripts implementing the baseline ISTA-net were provided to us by original authors of "Compressive Sensing and Neural Networks from a Statistical Learning Perspective", A. Behboodi, H. Rauhut, E. Schnoor, arXiv preprint, arXiv:2010.15658 (2020). For reproducibility purposes, the interested reader may contact them.
+
+## Citation
+
+If you use the code of this repository, please cite our paper. G. Paraskevopoulos and V. Kouni contributed to write the code of this repository.
